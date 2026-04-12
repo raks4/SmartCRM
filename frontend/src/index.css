@@ -5,8 +5,31 @@
   --muted: #486581;
   --border: #d9e2ec;
   --card: rgba(255, 255, 255, 0.88);
+  --surface: #ffffff;
+  --pipeline-card-bg: linear-gradient(180deg, #f3f7fa 0%, #e8eef4 100%);
+  --pipeline-card-label: #334e68;
+  --table-hover: rgba(16, 42, 67, 0.035);
+  --hero-gradient: linear-gradient(130deg, #102a43 0%, #1f7a8c 48%, #bfdbf7 100%);
+  --hero-text: #f7fbff;
+  --hero-subtext: rgba(247, 251, 255, 0.92);
+  --hero-shadow: 0 16px 35px rgba(16, 42, 67, 0.25);
   --sans: 'Chivo', 'Trebuchet MS', sans-serif;
   --mono: 'IBM Plex Mono', 'Courier New', monospace;
+}
+
+:root[data-theme='dark'] {
+  --text: #e7eff8;
+  --muted: #9fb4c8;
+  --border: #2f4358;
+  --card: rgba(12, 24, 38, 0.88);
+  --surface: rgba(10, 22, 35, 0.95);
+  --pipeline-card-bg: linear-gradient(180deg, #16283a 0%, #122131 100%);
+  --pipeline-card-label: #b5c6d6;
+  --table-hover: rgba(191, 219, 247, 0.08);
+  --hero-gradient: linear-gradient(125deg, #0b1726 0%, #1a4f64 45%, #2f7f90 100%);
+  --hero-text: #eaf4ff;
+  --hero-subtext: rgba(234, 244, 255, 0.88);
+  --hero-shadow: 0 16px 35px rgba(0, 0, 0, 0.35);
 }
 
 * {
@@ -22,4 +45,12 @@ body {
     radial-gradient(circle at 86% 90%, rgba(16, 42, 67, 0.2), transparent 34%),
     linear-gradient(160deg, #f4f8fb 0%, #eef4f8 52%, #f9fcff 100%);
   min-height: 100svh;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+:root[data-theme='dark'] body {
+  background:
+    radial-gradient(circle at 15% 12%, rgba(47, 127, 144, 0.25), transparent 35%),
+    radial-gradient(circle at 86% 90%, rgba(17, 49, 73, 0.35), transparent 34%),
+    linear-gradient(165deg, #08111d 0%, #0d1a2a 55%, #0b1521 100%);
 }
