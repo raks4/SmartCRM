@@ -16,7 +16,7 @@ Manage client leads and sales follow-up process.
 
 ## Current Stack (Implemented)
 
-- Backend: Django + SQLite
+- Backend: Django + Firebase (local SQLite retained for Django models)
 - Frontend: React + Vite
 
 ## Project Structure
@@ -24,25 +24,57 @@ Manage client leads and sales follow-up process.
 - frontend: React app (landing page, login page, CRM workspace UI)
 - backend: Django API (auth, leads, dashboard metrics)
 
+## Prerequisites
+
+- Python 3.10+
+- Node.js 20+ (nvm recommended)
+
 ## Run Locally
 
 1. Backend setup:
 - cd backend
-- python -m venv .venv
-- source .venv/bin/activate
-- pip install -r requirements.txt
+- python3 -m pip install --user -r requirements.txt
+- cp .env.example .env
+- edit .env with your Firebase credentials
 - python manage.py migrate
-- python manage.py createsuperuser
-- python manage.py runserver
+- python3 manage.py runserver
 
 2. Frontend setup:
 - cd frontend
+- nvm install
+- nvm use
 - npm install
 - npm run dev
 
 3. API URL (optional):
 - frontend uses VITE_API_URL
 - default value: http://127.0.0.1:8000/api
+
+4. Firebase env vars:
+- FIREBASE_PROJECT_ID
+- FIREBASE_CREDENTIALS_PATH
+- FIREBASE_STORAGE_BUCKET (optional)
+
+## Quick Start (Copy/Paste)
+
+Backend:
+- cd backend
+- python3 -m pip install --user -r requirements.txt
+- cp .env.example .env
+- python3 manage.py migrate
+- python3 manage.py runserver
+
+Frontend:
+- cd frontend
+- nvm install
+- nvm use
+- npm install
+- npm run dev
+
+## Troubleshooting
+
+- If frontend fails with Node errors, run nvm use inside frontend (project includes .nvmrc with Node 20).
+- If port 8000 or 5173 is already in use, stop old dev servers or run with a different port.
 
 ## API Endpoints
 

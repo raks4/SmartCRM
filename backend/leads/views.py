@@ -155,70 +155,93 @@ def parse_json_body(request: HttpRequest):
 def _call_ollama(prompt: str):
     ollama_base = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
     preferred_model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:3b")
-    ollama_timeout = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "90"))
+    ollama_timeout = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "45"))
+    ollama_keep_alive = os.getenv("OLLAMA_KEEP_ALIVE", "10m")
     generation_options = {
-        "temperature": 0.2,
-        "num_predict": 180,
+        "temperature": float(os.getenv("OLLAMA_TEMPERATURE", "0.1")),
+        "num_predict": int(os.getenv("OLLAMA_NUM_PREDICT", "96")),
+        "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "1024")),
     }
 
-    candidates = [
-        (
-            f"{ollama_base.rstrip('/')}/api/generate",
-            {
-                "model": preferred_model,
-                "prompt": prompt,
-                "stream": False,
-                "options": generation_options,
-            },
-            "response",
-        ),
-        (
-            f"{ollama_base.rstrip('/')}/api/chat",
-            {
-                "model": preferred_model,
-                "messages": [{"role": "user", "content": prompt}],
-                "stream": False,
-                "options": generation_options,
-            },
-            "message.content",
-        ),
-    ]
+    def _build_candidates(model_name: str):
+        return [
+            (
+                f"{ollama_base.rstrip('/')}/api/generate",
+                {
+                    "model": model_name,
+                    "prompt": prompt,
+                    "stream": False,
+                    "keep_alive": ollama_keep_alive,
+                    "options": generation_options,
+                },
+                "response",
+            ),
+            (
+                f"{ollama_base.rstrip('/')}/api/chat",
+                {
+                    "model": model_name,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "stream": False,
+                    "keep_alive": ollama_keep_alive,
+                    "options": generation_options,
+                },
+                "message.content",
+            ),
+        ]
+
+    model_candidates = [preferred_model]
+    fallback_models = [m.strip() for m in os.getenv("OLLAMA_FALLBACK_MODELS", "llama3.2,qwen2.5-coder:3b").split(",") if m.strip()]
+    for model_name in fallback_models:
+        if model_name not in model_candidates:
+            model_candidates.append(model_name)
 
     last_error = None
-    for ollama_url, payload, response_field in candidates:
-        encoded_payload = json.dumps(payload).encode("utf-8")
-        req = urllib_request.Request(
-            ollama_url,
-            data=encoded_payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+    for model_name in model_candidates:
+        candidates = _build_candidates(model_name)
+        for ollama_url, payload, response_field in candidates:
+            encoded_payload = json.dumps(payload).encode("utf-8")
+            req = urllib_request.Request(
+                ollama_url,
+                data=encoded_payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
 
-        try:
-            with urllib_request.urlopen(req, timeout=ollama_timeout) as resp:
-                body = resp.read().decode("utf-8")
-                data = json.loads(body)
-        except error.HTTPError as exc:
-            last_error = f"{ollama_url} returned HTTP {exc.code}"
-            if exc.code == 404:
-                continue
-            return None, f"Could not use Ollama at {ollama_url}: HTTP {exc.code}"
-        except error.URLError as exc:
-            return None, f"Could not reach Ollama at {ollama_url}: {exc.reason}"
-        except TimeoutError:
-            return None, "Ollama request timed out."
-        except json.JSONDecodeError:
-            return None, "Ollama returned non-JSON response."
+            try:
+                with urllib_request.urlopen(req, timeout=ollama_timeout) as resp:
+                    body = resp.read().decode("utf-8")
+                    data = json.loads(body)
+            except error.HTTPError as exc:
+                error_body = ""
+                try:
+                    error_body = exc.read().decode("utf-8")
+                except Exception:
+                    error_body = ""
 
-        if response_field == "response":
-            response_text = (data or {}).get("response", "").strip()
-        else:
-            response_text = ((data or {}).get("message") or {}).get("content", "").strip()
+                if exc.code == 404 and "model" in error_body.lower() and "not found" in error_body.lower():
+                    last_error = f"Model {model_name} not found in local Ollama"
+                    break
 
-        if response_text:
-            return response_text, None
+                last_error = f"{ollama_url} returned HTTP {exc.code}"
+                if exc.code == 404:
+                    continue
+                return None, f"Could not use Ollama at {ollama_url}: HTTP {exc.code}"
+            except error.URLError as exc:
+                return None, f"Could not reach Ollama at {ollama_url}: {exc.reason}"
+            except TimeoutError:
+                return None, "Ollama request timed out."
+            except json.JSONDecodeError:
+                return None, "Ollama returned non-JSON response."
 
-        last_error = f"{ollama_url} returned empty response"
+            if response_field == "response":
+                response_text = (data or {}).get("response", "").strip()
+            else:
+                response_text = ((data or {}).get("message") or {}).get("content", "").strip()
+
+            if response_text:
+                return response_text, None
+
+            last_error = f"{ollama_url} returned empty response"
 
     return None, last_error or "Ollama did not return a valid response."
 
@@ -259,6 +282,95 @@ def serialize_reminder(reminder: Reminder):
         "due_at": reminder.due_at.isoformat(),
         "is_done": reminder.is_done,
     }
+
+
+def _fast_snapshot_answer(user_prompt: str, data_snapshot: dict):
+    prompt = user_prompt.lower()
+    lead_count = data_snapshot.get("lead_count", 0)
+    total_pipeline_value = data_snapshot.get("total_pipeline_value", 0)
+    highest_lead = data_snapshot.get("highest_lead")
+    stage_counts = data_snapshot.get("stage_counts") or {}
+    top_leads = data_snapshot.get("top_leads") or []
+
+    if lead_count == 0:
+        return None
+
+    asks_highest = "highest" in prompt and ("lead" in prompt or "value" in prompt)
+    asks_total = "total pipeline" in prompt or ("pipeline" in prompt and "value" in prompt)
+    asks_count = "lead count" in prompt or ("how many" in prompt and "lead" in prompt)
+    asks_stage = "stage" in prompt or "breakdown" in prompt or "funnel" in prompt
+    asks_top = "top" in prompt and ("lead" in prompt or "opportun" in prompt)
+
+    if not any([asks_highest, asks_total, asks_count, asks_stage, asks_top]):
+        return None
+
+    lines = []
+
+    if asks_count:
+        lines.append(f"- Lead count: {lead_count}")
+
+    if asks_total:
+        lines.append(f"- Total pipeline value: ${total_pipeline_value:,.0f}")
+
+    if asks_highest:
+        if highest_lead:
+            lines.append(
+                "- Highest lead value: "
+                f"{highest_lead['company_name']} (${highest_lead['estimated_value']:,.0f}, stage={highest_lead['stage']})"
+            )
+        else:
+            lines.append("- Highest lead value: Data not available")
+
+    if asks_stage and stage_counts:
+        lines.append(
+            "- Stage breakdown: "
+            f"new={stage_counts.get('new', 0)}, "
+            f"qualified={stage_counts.get('qualified', 0)}, "
+            f"proposal={stage_counts.get('proposal', 0)}, "
+            f"negotiation={stage_counts.get('negotiation', 0)}, "
+            f"won={stage_counts.get('won', 0)}, "
+            f"lost={stage_counts.get('lost', 0)}"
+        )
+
+    if asks_top and top_leads:
+        top3 = top_leads[:3]
+        lines.append("- Top opportunities:")
+        for item in top3:
+            lines.append(f"  - {item['company_name']} (${item['estimated_value']:,.0f}, stage={item['stage']})")
+
+    lines.append("- Next step: ask a focused follow-up (e.g., 'what should I do this week to close top 2 deals?').")
+    return "\n".join(lines)
+
+
+def _fallback_chat_answer(user_prompt: str, data_snapshot: dict, ollama_error: str | None = None):
+    lead_count = data_snapshot.get("lead_count", 0)
+    stage_counts = data_snapshot.get("stage_counts") or {}
+    top_leads = data_snapshot.get("top_leads") or []
+    total_pipeline_value = float(data_snapshot.get("total_pipeline_value") or 0)
+
+    won = stage_counts.get("won", 0)
+    conversion_rate = round((won / lead_count) * 100) if lead_count else 0
+
+    lines = [
+        "Local AI is in fast fallback mode.",
+        f"- Lead count: {lead_count}",
+        f"- Pipeline value: ${total_pipeline_value:,.0f}",
+        f"- Current conversion: {conversion_rate}%",
+    ]
+
+    if top_leads:
+        top = top_leads[0]
+        lines.append(
+            f"- Top opportunity: {top['company_name']} (${top['estimated_value']:,.0f}, stage={top['stage']})"
+        )
+
+    lines.append("- Suggested next action: prioritize leads in proposal/negotiation and schedule follow-ups within 48h.")
+    lines.append(f"- Your question was: {user_prompt[:120]}")
+
+    if ollama_error:
+        lines.append(f"- Model status: {ollama_error}")
+
+    return "\n".join(lines)
 
 
 @csrf_exempt
@@ -559,14 +671,14 @@ def ai_chat_view(request: HttpRequest):
     leads_by_value = sorted(leads, key=lambda item: float(item.estimated_value), reverse=True)
 
     top_leads = []
-    for lead in leads_by_value[:5]:
+    for lead in leads_by_value[:3]:
         top_leads.append(
             {
                 "company_name": lead.company_name,
                 "stage": lead.stage,
                 "estimated_value": float(lead.estimated_value),
                 "last_touch": lead.last_touch.isoformat() if lead.last_touch else None,
-                "notes": (lead.notes or "")[:220],
+                "notes": (lead.notes or "")[:80],
             }
         )
 
@@ -613,23 +725,39 @@ def ai_chat_view(request: HttpRequest):
             }
         )
 
+    fast_reply = _fast_snapshot_answer(user_prompt, data_snapshot)
+    if fast_reply:
+        return JsonResponse(
+            {
+                "model": "rule-based-fast",
+                "reply": fast_reply,
+            }
+        )
+
     system_prompt = (
         "You are a CRM copilot that MUST stay grounded in the provided CRM data. "
         "Use exact numbers and company names from the data snapshot when available. "
         "NEVER output placeholders like [Insert ...]. "
         "If a value is missing, explicitly say 'Data not available'. "
-        "Keep response concise with bullets and include concrete next steps."
+        "Keep response concise with bullets and include concrete next steps. "
+        "Limit to at most 6 bullet points."
     )
     compiled_prompt = (
         f"{system_prompt}\n\n"
         f"CRM data snapshot:\n{json.dumps(data_snapshot, ensure_ascii=True)}\n\n"
-        f"User request:\n{user_prompt}\n\n"
+        f"User request:\n{user_prompt[:180]}\n\n"
         "Return a compact answer for a sales rep, grounded only in snapshot data."
     )
 
     response_text, err = _call_ollama(compiled_prompt)
     if err:
-        return JsonResponse({"detail": err}, status=502)
+        return JsonResponse(
+            {
+                "model": "rule-based-fallback",
+                "reply": _fallback_chat_answer(user_prompt, data_snapshot, ollama_error=err),
+                "degraded": True,
+            }
+        )
 
     return JsonResponse(
         {
