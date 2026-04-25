@@ -6,6 +6,7 @@ import './App.css'
 const WORKSPACE_VIEWS = new Set([
   'pipeline', 'create', 'edit', 'reports', 'reminders', 'logs', 'ai', 'about', 'privacy', 'support'
 ])
+const VIEW_ORDER = ['pipeline', 'create', 'edit', 'reports', 'reminders', 'logs', 'ai', 'about', 'privacy', 'support']
 
 function getViewFromHash() {
   const cleaned = (window.location.hash || '').replace(/^#\/?/, '')
@@ -16,6 +17,8 @@ function getViewFromHash() {
 function renderMarkdown(text) {
   if (!text) return ''
   const html = text
+    .replace(/^##### (.+)$/gm, '<h6>$1</h6>')
+    .replace(/^#### (.+)$/gm, '<h5>$1</h5>')
     .replace(/^### (.+)$/gm, '<h4>$1</h4>')
     .replace(/^## (.+)$/gm, '<h3>$1</h3>')
     .replace(/^# (.+)$/gm, '<h2>$1</h2>')
@@ -27,7 +30,7 @@ function renderMarkdown(text) {
     .replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g, '<ul>$1</ul>')
     .replace(/\n{2,}/g, '</p><p>')
     .replace(/\n/g, '<br/>')
-  return `<p>${html}</p>`
+  return `<div class="markdown-content"><p>${html}</p></div>`
 }
 
 function MarkdownReply({ text }) {
@@ -56,7 +59,7 @@ function downloadPDF(leads, metrics) {
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>SmartCRM Report</title>
 <style>body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:2cm}h1{font-size:20px;color:#10B981;margin-bottom:4px}.sub{color:#666;margin-bottom:20px;font-size:11px}.kpis{display:flex;gap:32px;margin-bottom:24px}.kpi{border:1px solid #ddd;border-radius:6px;padding:10px 16px;min-width:120px}.kpi-label{font-size:10px;color:#888;text-transform:uppercase}.kpi-val{font-size:18px;font-weight:bold;margin-top:2px}table{width:100%;border-collapse:collapse}th{text-align:left;padding:6px 8px;font-size:10px;text-transform:uppercase;color:#666;border-bottom:2px solid #ddd}td{padding:6px 8px;border-bottom:1px solid #eee;font-size:11px}.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:bold}.won{background:#d1fae5;color:#065f46}.lost{background:#fee2e2;color:#991b1b}.new{background:#dbeafe;color:#1e40af}.proposal{background:#fef3c7;color:#92400e}.negotiation{background:#ffedd5;color:#9a3412}.qualified{background:#d1fae5;color:#065f46}</style>
 </head><body>
-<h1>SmartCRM — Lead Report</h1>
+<h1>SmartCRM - Lead Report</h1>
 <p class="sub">Generated ${new Date().toLocaleString()} · ${leads.length} leads</p>
 <div class="kpis">
   <div class="kpi"><div class="kpi-label">Total Pipeline</div><div class="kpi-val">${fmt(metrics.total)}</div></div>
@@ -115,6 +118,92 @@ const IC = {
   moon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>,
 }
 
+function SideBar({ view, goHome, navigateToView, openReminders, openLogs, reminders, toggleTheme, theme, onSignOut }) {
+  const pendingReminders = reminders.filter(r => !r.is_done).length
+
+  return (
+    <aside className="sidebar">
+      <div className="sidebar-header">
+        <button className="brand-btn" onClick={goHome} type="button">
+          <span className="brand-logo">S</span>
+          <span className="brand-name">SmartCRM</span>
+        </button>
+      </div>
+
+      <span className="sidebar-section-label">Main Menu</span>
+      <nav className="sidebar-nav">
+        <button className={`sidebar-link${view === 'pipeline' ? ' active' : ''}`} onClick={goHome} type="button">
+          <span className="sl-icon">{IC.pipeline}</span>Dashboard
+        </button>
+        <button className={`sidebar-link${view === 'reports' ? ' active' : ''}`} onClick={() => navigateToView('reports')} type="button">
+          <span className="sl-icon">{IC.reports}</span>Analytics
+        </button>
+      </nav>
+
+      <span className="sidebar-section-label">Features</span>
+      <nav className="sidebar-nav">
+        <button className={`sidebar-link${view === 'reminders' ? ' active' : ''}`} onClick={() => openReminders()} type="button">
+          <span className="sl-icon">{IC.reminders}</span>Reminders
+          {pendingReminders > 0 && <span className="sl-badge">{pendingReminders}</span>}
+        </button>
+        <button className={`sidebar-link${view === 'logs' ? ' active' : ''}`} onClick={() => openLogs()} type="button">
+          <span className="sl-icon">{IC.logs}</span>Logs
+        </button>
+        <button className={`sidebar-link${view === 'ai' ? ' active' : ''}`} onClick={() => navigateToView('ai')} type="button">
+          <span className="sl-icon">{IC.ai}</span>AI Assistant
+        </button>
+      </nav>
+
+      <span className="sidebar-section-label">General</span>
+      <nav className="sidebar-nav">
+        <button className="sidebar-link" onClick={toggleTheme} type="button">
+          <span className="sl-icon">{theme === 'light' ? IC.moon : IC.theme}</span>
+          {theme === 'light' ? 'Dark Mode' : 'Light Mode'}
+        </button>
+        <button className={`sidebar-link${view === 'about' ? ' active' : ''}`} onClick={() => navigateToView('about')} type="button">
+          <span className="sl-icon">{IC.about}</span>About
+        </button>
+        <button className="sidebar-link" onClick={onSignOut} type="button">
+          <span className="sl-icon">{IC.logout}</span>Log out
+        </button>
+      </nav>
+    </aside>
+  )
+}
+
+function TopBar({ user, navigateToView, onSignOut, toggleTheme, theme }) {
+  return (
+    <header className="topbar">
+      <div className="topbar-left">
+        <span style={{ fontSize: '0.85rem', color: 'var(--muted)', fontWeight: 500 }}>
+          Welcome back,&nbsp;<strong style={{ color: 'var(--text)', fontWeight: 700 }}>{user?.username || 'there'}</strong>
+        </span>
+      </div>
+      <div className="topbar-actions">
+        <button className="new-lead-btn" onClick={() => navigateToView('create')} type="button">+ New Lead</button>
+        <span className="user-chip" title={user?.email}>{user?.username?.[0]?.toUpperCase() || 'U'}</span>
+        <button className="nav-btn signout-btn" onClick={onSignOut} type="button">Sign Out</button>
+        <button className="theme-sq" onClick={toggleTheme} type="button" aria-label="Toggle theme">
+          {theme === 'light' ? '☾' : '☀'}
+        </button>
+      </div>
+    </header>
+  )
+}
+
+function AppFooter({ navigateToView }) {
+  return (
+    <footer className="app-footer">
+      <div>© {new Date().getFullYear()} SmartCRM - All rights reserved.</div>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <span onClick={() => navigateToView('privacy')}>Privacy Policy</span>
+        <span onClick={() => navigateToView('support')}>Support</span>
+        <span onClick={() => navigateToView('about')}>About</span>
+      </div>
+    </footer>
+  )
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════════════
@@ -122,6 +211,7 @@ export default function App() {
   const [theme, setTheme] = useState('dark')
   const [screen, setScreen] = useState('loading')
   const [view, setView] = useState(getViewFromHash)
+  const [viewAnim, setViewAnim] = useState('flip-forward')
   const [user, setUser] = useState(null)
   const [authMode, setAuthMode] = useState('signin')
   const [authError, setAuthError] = useState('')
@@ -203,7 +293,16 @@ export default function App() {
 
   // ── Hash routing ───────────────────────────────────────────────────────
   useEffect(() => {
-    const handle = () => setView(v => { const n = getViewFromHash(); return n === v ? v : n })
+    const handle = () => {
+      const next = getViewFromHash()
+      setView(prev => {
+        if (prev === next) return prev
+        const currIdx = VIEW_ORDER.indexOf(prev)
+        const nextIdx = VIEW_ORDER.indexOf(next)
+        setViewAnim(nextIdx >= currIdx ? 'flip-forward' : 'flip-back')
+        return next
+      })
+    }
     window.addEventListener('hashchange', handle)
     return () => window.removeEventListener('hashchange', handle)
   }, [])
@@ -296,7 +395,7 @@ export default function App() {
 
   const onSignOut = async () => {
     await authApi.signOut()
-    setAllLeads([]); setView('pipeline')
+    setAllLeads([]); navigateToView('pipeline')
     setLoginForm({ username: '', password: '' })
     setSignupForm({ username: '', email: '', password: '', confirm_password: '' })
   }
@@ -304,16 +403,16 @@ export default function App() {
   // ── Lead handlers ──────────────────────────────────────────────────────
   const onCreateLead = async e => {
     e.preventDefault(); setBusy(true)
-    try { await leadApi.create({ ...leadForm, estimated_value: Number(leadForm.estimated_value || 0) }); setLeadForm(EMPTY_FORM); setView('pipeline') }
+    try { await leadApi.create({ ...leadForm, estimated_value: Number(leadForm.estimated_value || 0) }); setLeadForm(EMPTY_FORM); navigateToView('pipeline') }
     finally { setBusy(false) }
   }
 
-  const openEdit = lead => { setEditId(lead.id); setEditForm({ ...lead, estimated_value: String(lead.estimated_value ?? '') }); setView('edit') }
+  const openEdit = lead => { setEditId(lead.id); setEditForm({ ...lead, estimated_value: String(lead.estimated_value ?? '') }); navigateToView('edit') }
 
   const onSaveEdit = async e => {
     e.preventDefault(); if (!editId) return
     setBusy(true); setStageErr('')
-    try { await leadApi.update(editId, { ...editForm, estimated_value: Number(editForm.estimated_value || 0) }); setView('pipeline'); setEditId(null) }
+    try { await leadApi.update(editId, { ...editForm, estimated_value: Number(editForm.estimated_value || 0) }); navigateToView('pipeline'); setEditId(null) }
     catch (err) { setStageErr(err.message) }
     finally { setBusy(false) }
   }
@@ -364,93 +463,19 @@ export default function App() {
   }
 
   // ── Navigation helpers ─────────────────────────────────────────────────
-  const goHome = () => setView('pipeline')
-  const openLogs = lead => { if (lead) setSelectedLead(lead); setView('logs') }
-  const openReminders = lead => { if (lead) setSelectedLead(lead); setView('reminders') }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // LAYOUT COMPONENTS
-  // ═══════════════════════════════════════════════════════════════════════
-
-  const SideBar = () => (
-    <aside className="sidebar">
-      <div className="sidebar-header">
-        <button className="brand-btn" onClick={goHome} type="button">
-          <span className="brand-logo">S</span>
-          <span className="brand-name">SmartCRM</span>
-        </button>
-      </div>
-
-      <span className="sidebar-section-label">Main Menu</span>
-      <nav className="sidebar-nav">
-        <button className={`sidebar-link${view === 'pipeline' ? ' active' : ''}`} onClick={goHome} type="button">
-          <span className="sl-icon">{IC.pipeline}</span>Dashboard
-        </button>
-        <button className={`sidebar-link${view === 'reports' ? ' active' : ''}`} onClick={() => setView('reports')} type="button">
-          <span className="sl-icon">{IC.reports}</span>Analytics
-        </button>
-      </nav>
-
-      <span className="sidebar-section-label">Features</span>
-      <nav className="sidebar-nav">
-        <button className={`sidebar-link${view === 'reminders' ? ' active' : ''}`} onClick={() => openReminders()} type="button">
-          <span className="sl-icon">{IC.reminders}</span>Reminders
-          {reminders.filter(r => !r.is_done).length > 0 &&
-            <span className="sl-badge">{reminders.filter(r => !r.is_done).length}</span>
-          }
-        </button>
-        <button className={`sidebar-link${view === 'logs' ? ' active' : ''}`} onClick={() => openLogs()} type="button">
-          <span className="sl-icon">{IC.logs}</span>Logs
-        </button>
-        <button className={`sidebar-link${view === 'ai' ? ' active' : ''}`} onClick={() => setView('ai')} type="button">
-          <span className="sl-icon">{IC.ai}</span>AI Assistant
-        </button>
-      </nav>
-
-      <span className="sidebar-section-label">General</span>
-      <nav className="sidebar-nav">
-        <button className="sidebar-link" onClick={toggleTheme} type="button">
-          <span className="sl-icon">{theme === 'light' ? IC.moon : IC.theme}</span>
-          {theme === 'light' ? 'Dark Mode' : 'Light Mode'}
-        </button>
-        <button className={`sidebar-link${view === 'about' ? ' active' : ''}`} onClick={() => setView('about')} type="button">
-          <span className="sl-icon">{IC.about}</span>About
-        </button>
-        <button className="sidebar-link" onClick={onSignOut} type="button">
-          <span className="sl-icon">{IC.logout}</span>Log out
-        </button>
-      </nav>
-    </aside>
-  )
-
-  const TopBar = () => (
-    <header className="topbar">
-      <div className="topbar-left">
-        <span style={{ fontSize: '0.85rem', color: 'var(--muted)', fontWeight: 500 }}>
-          Welcome back,&nbsp;<strong style={{ color: 'var(--text)', fontWeight: 700 }}>{user?.username || 'there'}</strong>
-        </span>
-      </div>
-      <div className="topbar-actions">
-        <button className="new-lead-btn" onClick={() => setView('create')} type="button">+ New Lead</button>
-        <span className="user-chip" title={user?.email}>{user?.username?.[0]?.toUpperCase() || 'U'}</span>
-        <button className="nav-btn signout-btn" onClick={onSignOut} type="button">Sign Out</button>
-        <button className="theme-sq" onClick={toggleTheme} type="button" aria-label="Toggle theme">
-          {theme === 'light' ? '☾' : '☀'}
-        </button>
-      </div>
-    </header>
-  )
-
-  const AppFooter = () => (
-    <footer className="app-footer">
-      <div>© {new Date().getFullYear()} SmartCRM — All rights reserved.</div>
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        <span onClick={() => setView('privacy')}>Privacy Policy</span>
-        <span onClick={() => setView('support')}>Support</span>
-        <span onClick={() => setView('about')}>About</span>
-      </div>
-    </footer>
-  )
+  const navigateToView = nextView => {
+    if (!WORKSPACE_VIEWS.has(nextView)) return
+    setView(prev => {
+      if (prev === nextView) return prev
+      const currIdx = VIEW_ORDER.indexOf(prev)
+      const nextIdx = VIEW_ORDER.indexOf(nextView)
+      setViewAnim(nextIdx >= currIdx ? 'flip-forward' : 'flip-back')
+      return nextView
+    })
+  }
+  const goHome = () => navigateToView('pipeline')
+  const openLogs = lead => { if (lead) setSelectedLead(lead); navigateToView('logs') }
+  const openReminders = lead => { if (lead) setSelectedLead(lead); navigateToView('reminders') }
 
   // ═══════════════════════════════════════════════════════════════════════
   // SCREENS: LOADING / LANDING / AUTH
@@ -478,6 +503,8 @@ export default function App() {
       </nav>
 
       <section className="landing-hero">
+        <span className="parallax-layer layer-a" aria-hidden="true" />
+        <span className="parallax-layer layer-b" aria-hidden="true" />
         <div className="landing-left">
           <span className="eyebrow">Intelligent Lead Management</span>
           <h1>Close more deals with<br />smarter pipeline control</h1>
@@ -497,7 +524,7 @@ export default function App() {
           <div className="feature-grid">
             {[
               { ic: IC.pipeline, title: 'Pipeline Tracker', desc: 'Visualise every deal across New → Won in real time.' },
-              { ic: IC.ai, title: 'AI Assistant', desc: 'Ask anything — strategy, email drafts, risk analysis.' },
+              { ic: IC.ai, title: 'AI Assistant', desc: 'Ask anything - strategy, email drafts, risk analysis.' },
               { ic: IC.reminders, title: 'Follow-up Reminders', desc: 'Never drop a lead. Set contextual reminders per deal.' },
               { ic: IC.logs, title: 'Communication Logs', desc: 'Log every call, email, meeting. Recall context instantly.' },
               { ic: IC.reports, title: 'Conversion Analytics', desc: 'Track win rates, avg deal size, and source ROI live.' },
@@ -550,7 +577,7 @@ export default function App() {
             <p className="auth-switch">No account? <button type="button" onClick={() => { setAuthMode('signup'); setAuthError('') }}>Create one free →</button></p>
           </>) : (<>
             <h1 className="auth-title">Create your account</h1>
-            <p className="auth-subtitle">Free to start — no credit card needed.</p>
+            <p className="auth-subtitle">Free to start - no credit card needed.</p>
             <form onSubmit={onSignUp} className="auth-form">
               <label>Full Name<input value={signupForm.username} onChange={e => setSignupForm(p => ({ ...p, username: e.target.value }))} placeholder="Your name" required /></label>
               <label>Email Address<input type="email" value={signupForm.email} onChange={e => setSignupForm(p => ({ ...p, email: e.target.value }))} placeholder="you@company.com" required /></label>
@@ -607,7 +634,7 @@ export default function App() {
     if (view === 'reports') return (
       <main className="crm">
         <header className="page-hdr panel">
-          <div><h1>Conversion Reports</h1><p className="muted">Live analytics from your pipeline — {leads.length} leads.</p></div>
+          <div><h1>Conversion Reports</h1><p className="muted">Live analytics from your pipeline - {leads.length} leads.</p></div>
           <div className="hdr-actions">
             <button className="ghost-sm" onClick={() => downloadCSV(leads)} type="button">⬇ CSV</button>
             <button className="ghost-sm" onClick={() => downloadPDF(leads, { total: totalValue, won: wonValue, rate: convRate })} type="button">⬇ PDF</button>
@@ -626,7 +653,9 @@ export default function App() {
               {pipeline.map(item => (
                 <li key={item.key}>
                   <div className="stat-row"><span className={`tag ${item.key}`}>{item.label}</span><strong>{item.value}</strong></div>
-                  <progress max={Math.max(leads.length, 1)} value={item.value} />
+                  <div className="bar-container">
+                    <div className={`bar-fill ${item.key}`} style={{ width: `${(item.value / Math.max(leads.length, 1)) * 100}%` }} />
+                  </div>
                 </li>
               ))}
             </ul>
@@ -637,7 +666,9 @@ export default function App() {
               {srcBreakdown.map(item => (
                 <li key={item.label}>
                   <div className="stat-row"><span>{item.label}</span><strong>{item.value}</strong></div>
-                  <progress max={Math.max(leads.length, 1)} value={item.value} />
+                  <div className="bar-container">
+                    <div className="bar-fill" style={{ width: `${(item.value / Math.max(leads.length, 1)) * 100}%` }} />
+                  </div>
                 </li>
               ))}
               {!srcBreakdown.length && <li className="empty">No leads yet.</li>}
@@ -688,7 +719,7 @@ export default function App() {
     // ── Logs ───────────────────────────────────────────────────────────
     if (view === 'logs') return (
       <main className="crm">
-        <header className="page-hdr panel"><div><h1>Communication Logs</h1><p className="muted">Record every touchpoint per lead — synced live.</p></div></header>
+        <header className="page-hdr panel"><div><h1>Communication Logs</h1><p className="muted">Record every touchpoint per lead - synced live.</p></div></header>
         <section className="panel">
           <div className="context-row">
             <label>Lead
@@ -760,14 +791,14 @@ export default function App() {
         <header className="page-hdr panel"><div><h1 style={{ textTransform: 'capitalize' }}>{view}</h1><p className="muted">SmartCRM {view} information.</p></div></header>
         <section className="panel md-body" style={{ maxWidth: '760px', padding: '2rem' }}>
           {view === 'about' && (<>
-            <h2>SmartCRM — Project Overview</h2>
+            <h2>SmartCRM - Project Overview</h2>
             <p>SmartCRM is a powerful, real-time lead management system designed to help sales teams close more deals.</p>
             <h3>Key Features</h3>
             <ul>
-              <li><strong>Pipeline Tracker</strong> — Visualise every deal across your sales funnel.</li>
-              <li><strong>AI Assistant</strong> — Strategy, email drafts, and risk analysis via Hugging Face AI.</li>
-              <li><strong>Task Reminders &amp; Logs</strong> — Track every touchpoint and next step.</li>
-              <li><strong>Real-time Sync</strong> — Firebase-powered live data across all devices.</li>
+              <li><strong>Pipeline Tracker</strong> - Visualise every deal across your sales funnel.</li>
+              <li><strong>AI Assistant</strong> - Strategy, email drafts, and risk analysis via Hugging Face AI.</li>
+              <li><strong>Task Reminders &amp; Logs</strong> - Track every touchpoint and next step.</li>
+              <li><strong>Real-time Sync</strong> - Firebase-powered live data across all devices.</li>
             </ul>
           </>)}
           {view === 'privacy' && (<>
@@ -788,14 +819,13 @@ export default function App() {
       <main className="crm">
         <header className="page-hdr panel workspace-hdr">
           <div>
-            <span className="eyebrow-sm">Welcome back, {user?.username || 'there'}</span>
             <h1>Lead Pipeline</h1>
-            <p className="muted">{leads.length} lead{leads.length !== 1 ? 's' : ''} in your pipeline{leadsLoading ? ' — syncing…' : ''}</p>
+            <p className="muted">{leads.length} lead{leads.length !== 1 ? 's' : ''} in your pipeline{leadsLoading ? '- syncing…' : ''}</p>
           </div>
           <div className="hdr-actions">
             <button className="ghost-sm" onClick={() => downloadCSV(leads)} type="button">⬇ CSV</button>
             <button className="ghost-sm" onClick={() => downloadPDF(leads, { total: totalValue, won: wonValue, rate: convRate })} type="button">⬇ PDF</button>
-            <button className="cta-sm" onClick={() => setView('create')} type="button">+ New Lead</button>
+            <button className="cta-sm" onClick={() => navigateToView('create')} type="button">+ New Lead</button>
           </div>
         </header>
 
@@ -889,12 +919,34 @@ export default function App() {
 
   // ── App shell ───────────────────────────────────────────────────────
   return (
-    <div className="app-layout">
-      <SideBar />
+    <div className="app-layout book-container">
+      <SideBar
+        view={view}
+        goHome={goHome}
+        navigateToView={navigateToView}
+        openReminders={openReminders}
+        openLogs={openLogs}
+        reminders={reminders}
+        toggleTheme={toggleTheme}
+        theme={theme}
+        onSignOut={onSignOut}
+      />
       <div className="main-area">
-        <TopBar />
-        {renderView()}
-        <AppFooter />
+        <TopBar
+          user={user}
+          navigateToView={navigateToView}
+          onSignOut={onSignOut}
+          toggleTheme={toggleTheme}
+          theme={theme}
+        />
+        <div className="page-wrapper">
+          <div className={`page-sheet ${viewAnim}`} key={view}>
+            <div className="page-animate">
+              {renderView()}
+            </div>
+          </div>
+        </div>
+        <AppFooter navigateToView={navigateToView} />
       </div>
     </div>
   )
